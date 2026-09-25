@@ -74,6 +74,8 @@
 #define ARCH_BYTE_ORDER ARCH_LITTLE_ENDIAN
 #elif defined(__sw_64)
 #define ARCH_BYTE_ORDER ARCH_LITTLE_ENDIAN
+#elif defined(__EMSCRIPTEN__)
+#define ARCH_BYTE_ORDER ARCH_LITTLE_ENDIAN
 #endif
 
 #ifndef ARCH_BYTE_ORDER
