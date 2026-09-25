@@ -29,12 +29,55 @@ install_executable ( udp_recv )
 endif ( BUILD_UDP_RECV )
 
 # rom2c
-# XXX must be built for the host, not target, to support cross-compiling
-add_executable ( rom2c EXCLUDE_FROM_ALL
-   "${COMMON}/rom2c.c"
-   )
-target_link_libraries ( rom2c ${DYNAMIPS_LIBRARIES} )
-set ( ROM2C_EXECUTABLE "${CMAKE_CURRENT_BINARY_DIR}/rom2c${CMAKE_EXECUTABLE_SUFFIX}" CACHE INTERNAL "rom2c executable" )
+# Must be built for the host, not the cross-compilation target.
+# When CMAKE_CROSSCOMPILING is set (e.g. Emscripten), the normal
+# add_executable would produce a WASM binary that cannot run on the host.
+# Instead, use ExternalProject_Add to compile rom2c in a separate CMake
+# invocation that uses the native host toolchain.
+if ( CMAKE_CROSSCOMPILING )
+   include ( ExternalProject )
+   set ( _host_tools_build "${CMAKE_CURRENT_BINARY_DIR}/rom2c_host" )
+   # emcmake injects CC=emcc (and CXX, AR, …) into the environment.
+   # ExternalProject inherits those, so the sub-cmake would detect emcc as the
+   # C compiler and fail.  Use cmake -E env to unset them before the sub-cmake
+   # runs so it falls back to native host compiler detection.
+   ExternalProject_Add ( rom2c_host_tools
+      SOURCE_DIR "${CMAKE_SOURCE_DIR}/cmake/host_tools"
+      BINARY_DIR "${_host_tools_build}"
+      CONFIGURE_COMMAND
+         ${CMAKE_COMMAND} -E env
+            --unset=CC
+            --unset=CXX
+            --unset=AR
+            --unset=RANLIB
+            --unset=LD
+            --unset=CFLAGS
+            --unset=CXXFLAGS
+            --unset=LDFLAGS
+         --
+         ${CMAKE_COMMAND}
+            -S "${CMAKE_SOURCE_DIR}/cmake/host_tools"
+            -B "${_host_tools_build}"
+            "-DCOMMON_DIR=${COMMON}"
+            "-DLOCAL_DIR=${LOCAL}"
+            "-DUSE_VENDORED_LIBELF=${USE_VENDORED_LIBELF}"
+            "-DTHIRD_PARTY_DIR=${CMAKE_SOURCE_DIR}/third_party"
+            "-DCMAKE_MODULE_DIR=${CMAKE_SOURCE_DIR}/cmake"
+      BUILD_COMMAND
+         ${CMAKE_COMMAND} --build "${_host_tools_build}"
+      INSTALL_COMMAND ""
+      BUILD_BYPRODUCTS "${_host_tools_build}/rom2c"
+      )
+   # Expose a "rom2c" target so the custom commands below can list it in DEPENDS
+   add_custom_target ( rom2c DEPENDS rom2c_host_tools )
+   set ( ROM2C_EXECUTABLE "${_host_tools_build}/rom2c" CACHE INTERNAL "rom2c executable" )
+else ()
+   add_executable ( rom2c EXCLUDE_FROM_ALL
+      "${COMMON}/rom2c.c"
+      )
+   target_link_libraries ( rom2c ${DYNAMIPS_LIBRARIES} )
+   set ( ROM2C_EXECUTABLE "${CMAKE_CURRENT_BINARY_DIR}/rom2c${CMAKE_EXECUTABLE_SUFFIX}" CACHE INTERNAL "rom2c executable" )
+endif ()
 
 # mips64_microcode_dump.inc
 set ( _input "${LOCAL}/mips64_microcode" )
