@@ -29,6 +29,14 @@ set ( DYNAMIPS_VERSION_TRAIN "${PROJECT_VERSION}" )
 set ( DYNAMIPS_VERSION_SUB )
 
 include ( utils )
+
+# Option: build and link against the vendored libelf in third_party/libelf
+# instead of the system-installed one.
+option ( USE_VENDORED_LIBELF "Use the vendored libelf from third_party/libelf" OFF )
+if ( USE_VENDORED_LIBELF )
+   add_subdirectory ( third_party/libelf )
+endif ()
+
 include ( dependencies )
 include ( configure )
 

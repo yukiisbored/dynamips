@@ -148,31 +148,51 @@ if ( USE_LIBNSL )
 endif ()
 
 # libelf
-set_cmake_required ()
-find_package ( LibElf REQUIRED )
-print_variables ( LIBELF_FOUND LIBELF_INCLUDE_DIRS LIBELF_LIBRARIES LIBELF_DEFINITIONS )
-# make sure it can be used
-set_cmake_required ()
-list ( APPEND CMAKE_REQUIRED_DEFINITIONS ${LIBELF_DEFINITIONS} )
-list ( APPEND CMAKE_REQUIRED_INCLUDES ${LIBELF_INCLUDE_DIRS} )
-check_arch_library ( LIBELF_VALID elf_begin "libelf.h" LIBELF_LIBRARIES elf )
-if ( NOT LIBELF_VALID )
-   bad_arch_library ( FATAL_ERROR "libelf" "LIBELF_INCLUDE_DIRS and LIBELF_LIBRARIES" )
-endif ()
-list ( APPEND DYNAMIPS_DEFINITIONS ${LIBELF_DEFINITIONS} )
-list ( APPEND DYNAMIPS_INCLUDES ${LIBELF_INCLUDE_DIRS} )
-list ( APPEND DYNAMIPS_LIBRARIES ${LIBELF_LIBRARIES} )
-# XXX some old libelf's aren't large file aware with ILP32
-set ( _code "
+if ( USE_VENDORED_LIBELF )
+   # Use the vendored libelf built from third_party/libelf.
+   # The add_subdirectory(third_party/libelf) call in CMakeLists.txt has already
+   # processed the subdirectory and set VENDORED_LIBELF_INCLUDE_DIR.
+   set ( LIBELF_FOUND TRUE )
+   set ( LIBELF_INCLUDE_DIRS "${VENDORED_LIBELF_INCLUDE_DIR}" )
+   set ( LIBELF_LIBRARIES libelf_vendored )
+   set ( LIBELF_DEFINITIONS "" )
+   # Assume large-file support is available (skip the compile check because the
+   # vendored library target cannot be linked at CMake configure time).
+   set ( LIBELF_LARGEFILE 1 )
+   print_variables ( LIBELF_FOUND LIBELF_INCLUDE_DIRS LIBELF_LIBRARIES LIBELF_DEFINITIONS LIBELF_LARGEFILE )
+   list ( APPEND DYNAMIPS_DEFINITIONS ${LIBELF_DEFINITIONS} )
+   list ( APPEND DYNAMIPS_INCLUDES ${LIBELF_INCLUDE_DIRS} )
+   # LIBELF_LIBRARIES (a CMake target name) is deliberately NOT added to
+   # DYNAMIPS_LIBRARIES here to keep it out of CMAKE_REQUIRED_LIBRARIES used
+   # by check_*() functions that run further below.  It is appended at the
+   # end of this file instead, after all configure checks have completed.
+else ()
+   set_cmake_required ()
+   find_package ( LibElf REQUIRED )
+   print_variables ( LIBELF_FOUND LIBELF_INCLUDE_DIRS LIBELF_LIBRARIES LIBELF_DEFINITIONS )
+   # make sure it can be used
+   set_cmake_required ()
+   list ( APPEND CMAKE_REQUIRED_DEFINITIONS ${LIBELF_DEFINITIONS} )
+   list ( APPEND CMAKE_REQUIRED_INCLUDES ${LIBELF_INCLUDE_DIRS} )
+   check_arch_library ( LIBELF_VALID elf_begin "libelf.h" LIBELF_LIBRARIES elf )
+   if ( NOT LIBELF_VALID )
+      bad_arch_library ( FATAL_ERROR "libelf" "LIBELF_INCLUDE_DIRS and LIBELF_LIBRARIES" )
+   endif ()
+   list ( APPEND DYNAMIPS_DEFINITIONS ${LIBELF_DEFINITIONS} )
+   list ( APPEND DYNAMIPS_INCLUDES ${LIBELF_INCLUDE_DIRS} )
+   list ( APPEND DYNAMIPS_LIBRARIES ${LIBELF_LIBRARIES} )
+   # XXX some old libelf's aren't large file aware with ILP32
+   set ( _code "
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE_SOURCE
 #define _LARGEFILE_SOURCE64
 #include <libelf.h>
 int main() { return 0; }
 " )
-set_cmake_required ()
-check_c_source_compiles ( "${_code}" LIBELF_LARGEFILE )
-print_variables ( LIBELF_LARGEFILE )
+   set_cmake_required ()
+   check_c_source_compiles ( "${_code}" LIBELF_LARGEFILE )
+   print_variables ( LIBELF_LARGEFILE )
+endif ()
 
 # pthreads
 set ( CMAKE_THREAD_PREFER_PTHREAD 1 )
@@ -313,5 +333,12 @@ else ()
    set ( HAVE_IPV6 0 )
 endif ()
 print_variables ( HAVE_IPV6 )
+
+# Add the vendored libelf target to DYNAMIPS_LIBRARIES now that all configure
+# checks are done (the target name must not appear in CMAKE_REQUIRED_LIBRARIES
+# during the check_*() calls above, because it cannot be resolved at configure time).
+if ( USE_VENDORED_LIBELF )
+   list ( APPEND DYNAMIPS_LIBRARIES libelf_vendored )
+endif ()
 
 message ( STATUS "dependencies - END" )
